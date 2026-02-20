@@ -9,39 +9,31 @@ from django.contrib.auth import authenticate,login,logout
 from django.contrib.auth.decorators import login_required
 from datetime import datetime
 
-def index(request:HttpRequest):
-    popular_categories = Category.objects.all().order_by('-likes')[:5]
-    pages = Page.objects.all().order_by('-views')[:5]
-    print(popular_categories)
+def index(request):
+    category_list = Category.objects.order_by('-likes')[:5]
+    page_list = Page.objects.order_by('-views')[:5]
+
+    visitor_cookie_handler(request) 
 
     context_dict = {
-        'boldmessage': 'Crunchy, creamy, cookie, candy, cupcake!',
-        'categories': popular_categories,
-        'pages': pages,
-        'user':request.user
+        'categories': category_list,
+        'pages': page_list,
     }
-    request.session.set_test_cookie()
-    if request.session.test_cookie_worked():
-        print("TEST COOKIE WORKED!")
-        request.session.delete_test_cookie()
-    visitor_cookie_handler(request)
+    return render(request, 'rango/index.html', context=context_dict)
 
-    response= render(request, 'rango/index.html', context=context_dict)
-    visitor_cookie_handler_x(request,response)
+
+
+def about(request):
+    visitor_cookie_handler(request)  
+    visits = request.session.get('visits', 1)
+
+    context_dict = {'visits': visits}
+    return render(request, 'rango/about.html', context=context_dict)
+
+
+
+
     
-    return response
-
-
-
-def about(request:HttpRequest):
-    
-    visitor_cookie_handler(request)
-
-    response= render(request, 'rango/about.html',{'visits':request.session['visits']})
-    visitor_cookie_handler_x(request,response)
-    
-
-    return response
 
 
 def show_category(request, category_name_slug):
@@ -164,7 +156,7 @@ def get_serverside_cookies(request:HttpRequest,cookie,default_val=None):
         val = default_val
     return val
 
-def visitor_cookie_handler_x(request:HttpRequest,response:HttpResponse):
+def visitor_cookie_handler_x( response):
     visits =int(get_serverside_cookies(request,'visits','1'))
     last_visit_cookie = get_serverside_cookies(request,'last_visit',str(datetime.now()))
     last_visit_time = datetime.strptime(last_visit_cookie[:-7],'%Y-%m-%d %H:%M:%S')
@@ -176,15 +168,29 @@ def visitor_cookie_handler_x(request:HttpRequest,response:HttpResponse):
         
     response.set_cookie('visits',visits)
 
+from datetime import datetime
 
-def visitor_cookie_handler(request:HttpRequest):
-    visits =int(get_serverside_cookies(request,'visits','1'))
-    last_visit_cookie = get_serverside_cookies(request,'last_visit',str(datetime.now()))
-    last_visit_time = datetime.strptime(last_visit_cookie[:-7],'%Y-%m-%d %H:%M:%S')
-    if(datetime.now()-last_visit_time).days>0:
-        visits+=1
-        request.session['last_visit']= datetime.now()
+from datetime import datetime
+
+def visitor_cookie_handler(request):
+    visits = request.session.get('visits', 0)
+    last_visit = request.session.get('last_visit')
+
+    if last_visit:
+        try:
+            last_visit_time = datetime.strptime(last_visit, '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            last_visit_time = datetime.now()
     else:
-        request.session['last_visit']=last_visit_cookie
-        
-    request.session['visits']=visits
+        last_visit_time = datetime.now()
+
+    # Increment if a day has passed (same logic as chapter)
+    if (datetime.now() - last_visit_time).days >= 1:
+        visits += 1
+        request.session['last_visit'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        request.session['visits'] = visits
+    else:
+        # Initialise if missing
+        if 'visits' not in request.session:
+            request.session['visits'] = 1
+            request.session['last_visit'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
